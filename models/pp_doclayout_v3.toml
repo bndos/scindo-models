@@ -1,0 +1,70 @@
+schema_version = 1
+
+[model]
+name = "pp_doclayout_v3"
+model_type = "pp_doclayout_v3"
+root = "artifacts/pp_doclayout_v3"
+
+[model.sources.hf_onnx]
+kind = "huggingface"
+repo_id = "PaddlePaddle/PP-DocLayoutV3_onnx"
+revision = "main"
+
+[model.artifacts.onnx]
+kind = "onnx_model"
+path = "onnx"
+build = "onnx"
+
+[model.artifacts.cuda]
+kind = "onnxruntime_bundle"
+path = "cuda"
+build = "cuda"
+
+[model.artifacts.trt_fp32]
+kind = "onnxruntime_bundle"
+path = "trt_fp32"
+build = "trt_fp32"
+
+[model.artifacts.trt_fp16]
+kind = "onnxruntime_bundle"
+path = "trt_fp16"
+build = "trt_fp16"
+
+[model.build_profiles.onnx]
+builder = "fetch"
+source = "hf_onnx"
+output = "onnx"
+file = "inference.onnx"
+
+[model.build_profiles.cuda]
+builder = "onnxruntime-bundle"
+input = "onnx"
+output = "cuda"
+providers = ["CUDAExecutionProvider"]
+outputs = ["fetch_name_0", "fetch_name_1"]
+
+[model.build_profiles.trt_fp32]
+builder = "onnxruntime-bundle"
+input = "onnx"
+output = "trt_fp32"
+providers = ["TensorrtExecutionProvider", "CUDAExecutionProvider"]
+outputs = ["fetch_name_0", "fetch_name_1"]
+
+[model.build_profiles.trt_fp32.provider_options.TensorrtExecutionProvider]
+trt_engine_cache_enable = true
+trt_engine_cache_path = "ort_trt_cache"
+trt_fp16_enable = false
+trt_min_subgraph_size = 200
+
+[model.build_profiles.trt_fp16]
+builder = "onnxruntime-bundle"
+input = "onnx"
+output = "trt_fp16"
+providers = ["TensorrtExecutionProvider", "CUDAExecutionProvider"]
+outputs = ["fetch_name_0", "fetch_name_1"]
+
+[model.build_profiles.trt_fp16.provider_options.TensorrtExecutionProvider]
+trt_engine_cache_enable = true
+trt_engine_cache_path = "ort_trt_cache"
+trt_fp16_enable = true
+trt_min_subgraph_size = 200
