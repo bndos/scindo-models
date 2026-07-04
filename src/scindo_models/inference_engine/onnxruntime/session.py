@@ -3,7 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from scindo_models.artifacts import ArtifactManifest, read_manifest
+from scindo_models.artifacts import (
+    OnnxRuntimeBundleManifest,
+    read_onnxruntime_manifest,
+)
 from scindo_models.inference_engine.base import (
     InferSession,
     TensorMap,
@@ -16,7 +19,7 @@ class OrtInferSession(InferSession):
         import onnxruntime as ort
 
         self.artifact_path = artifact_path
-        self.manifest = read_manifest(artifact_path)
+        self.manifest = read_onnxruntime_manifest(artifact_path)
         self.model_path = artifact_path / self.manifest.model_path
 
         available = set(ort.get_available_providers())
@@ -38,7 +41,7 @@ class OrtInferSession(InferSession):
     @staticmethod
     def _providers(
         artifact_path: Path,
-        manifest: ArtifactManifest,
+        manifest: OnnxRuntimeBundleManifest,
     ) -> list[Any]:
         providers: list[Any] = []
         for provider in manifest.providers:

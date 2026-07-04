@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from scindo_models.artifacts import ensure_artifact, read_manifest
+from scindo_models.artifacts import ensure_artifact, read_onnxruntime_manifest
 from scindo_models.inference_engine.base import get_engine, parse_engine_type
 from scindo_models.inference_engine.base import InferSession
 from scindo_models.models.base import (
@@ -23,7 +23,7 @@ def load_model(
     artifact = model.artifact(artifact_name)
     artifact_path = ensure_artifact(model, artifact)
 
-    manifest = read_manifest(artifact_path)
+    manifest = read_onnxruntime_manifest(artifact_path)
     engine_class = get_engine(parse_engine_type(manifest.engine))
     session: InferSession = engine_class(artifact_path)
 

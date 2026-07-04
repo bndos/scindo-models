@@ -5,7 +5,7 @@ import shutil
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from scindo_models.registry import (
     ArtifactSourceSpec,
@@ -21,22 +21,35 @@ from scindo_models.registry import (
 
 
 MANIFEST_FILE = "artifact.json"
-MODEL_FILE = "inference.onnx"
 
 
 @dataclass(frozen=True)
-class ArtifactManifest:
-    kind: ArtifactType
+class OnnxModelManifest:
+    kind: Literal[ArtifactType.ONNX_MODEL]
     model_type: str
-    engine: str
-    model_file: str
+    model_file: Path
+
+    @property
+    def model_path(self) -> Path:
+        return self.model_file
+
+
+@dataclass(frozen=True)
+class OnnxRuntimeBundleManifest:
+    kind: Literal[ArtifactType.ONNXRUNTIME_BUNDLE]
+    model_type: str
+    model_file: Path
+    engine: Literal["onnxruntime"]
     providers: tuple[str, ...]
     provider_options: dict[str, dict[str, object]]
     outputs: tuple[str, ...] | None
 
     @property
     def model_path(self) -> Path:
-        return Path(self.model_file)
+        return self.model_file
+
+
+ArtifactManifest = OnnxModelManifest | OnnxRuntimeBundleManifest
 
 
 class ArtifactFetcher(ABC):
@@ -71,18 +84,41 @@ def read_manifest(artifact_path: Path) -> ArtifactManifest:
     with (artifact_path / MANIFEST_FILE).open("r", encoding="utf-8") as f:
         raw = json.load(f)
 
-    runtime = raw["runtime"]
-    return ArtifactManifest(
-        kind=ArtifactType(raw["kind"]),
-        model_type=raw["model"]["type"],
-        engine=runtime["engine"],
-        model_file=runtime["model_file"],
-        providers=tuple(runtime["providers"]),
-        provider_options=dict(runtime.get("provider_options", {})),
-        outputs=tuple(runtime["outputs"])
-        if runtime.get("outputs") is not None
-        else None,
-    )
+    kind = ArtifactType(raw["kind"])
+    match kind:
+        case ArtifactType.ONNX_MODEL:
+            model_file = raw.get("files", {}).get("model")
+            if not isinstance(model_file, str):
+                raise ValueError(
+                    f"Missing model file in artifact manifest: {artifact_path}"
+                )
+            return OnnxModelManifest(
+                kind=ArtifactType.ONNX_MODEL,
+                model_type=raw["model"]["type"],
+                model_file=Path(model_file),
+            )
+        case ArtifactType.ONNXRUNTIME_BUNDLE:
+            runtime = raw["runtime"]
+            return OnnxRuntimeBundleManifest(
+                kind=ArtifactType.ONNXRUNTIME_BUNDLE,
+                model_type=raw["model"]["type"],
+                model_file=Path(runtime["model_file"]),
+                engine="onnxruntime",
+                providers=tuple(runtime["providers"]),
+                provider_options=dict(runtime.get("provider_options", {})),
+                outputs=tuple(runtime["outputs"])
+                if runtime.get("outputs") is not None
+                else None,
+            )
+
+
+def read_onnxruntime_manifest(artifact_path: Path) -> OnnxRuntimeBundleManifest:
+    manifest = read_manifest(artifact_path)
+    match manifest.kind:
+        case ArtifactType.ONNXRUNTIME_BUNDLE:
+            return manifest
+        case ArtifactType.ONNX_MODEL:
+            raise ValueError(f"Artifact is not an ONNX Runtime bundle: {artifact_path}")
 
 
 def get_fetcher(source_type: SourceType) -> ArtifactFetcher:
@@ -93,7 +129,10 @@ def get_fetcher(source_type: SourceType) -> ArtifactFetcher:
 
 def _is_materialized(artifact: ArtifactSpec) -> bool:
     if artifact.kind == ArtifactType.ONNX_MODEL:
-        return (artifact.path / MODEL_FILE).is_file()
+        if not (artifact.path / MANIFEST_FILE).is_file():
+            return False
+        manifest = read_manifest(artifact.path)
+        return (artifact.path / manifest.model_path).is_file()
     return (artifact.path / MANIFEST_FILE).is_file()
 
 
@@ -112,9 +151,17 @@ def _materialize_fetch(model: ModelSpec, build_profile: FetchBuildSpec) -> None:
         build_profile.file,
         output_artifact.path,
     )
-    model_path = output_artifact.path / MODEL_FILE
+    model_path = output_artifact.path / build_profile.file
     if fetched_path.resolve() != model_path.resolve():
         shutil.copy2(fetched_path, model_path)
+    _write_manifest(
+        output_artifact.path,
+        {
+            "kind": output_artifact.kind.value,
+            "model": {"type": model.model_type},
+            "files": {"model": build_profile.file},
+        },
+    )
 
 
 def _materialize_onnxruntime_bundle(
@@ -124,9 +171,13 @@ def _materialize_onnxruntime_bundle(
     input_artifact = model.artifact(build_profile.input)
     output_artifact = model.artifact(build_profile.output)
     input_path = ensure_artifact(model, input_artifact)
+    input_manifest = read_manifest(input_path)
 
     output_artifact.path.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(input_path / MODEL_FILE, output_artifact.path / MODEL_FILE)
+    shutil.copy2(
+        input_path / input_manifest.model_path,
+        output_artifact.path / input_manifest.model_path,
+    )
     _create_provider_paths(output_artifact.path, build_profile.provider_options)
 
     _write_manifest(
@@ -136,7 +187,7 @@ def _materialize_onnxruntime_bundle(
             "model": {"type": model.model_type},
             "runtime": {
                 "engine": "onnxruntime",
-                "model_file": MODEL_FILE,
+                "model_file": str(input_manifest.model_path),
                 "providers": list(build_profile.providers),
                 "provider_options": build_profile.provider_options,
                 "outputs": list(build_profile.outputs)
