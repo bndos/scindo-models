@@ -3,9 +3,9 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from scindo_models.model_spec import BuildType
 from scindo_models.optimize import optimize_artifact
 from scindo_models.registry import (
-    BuildType,
     DEFAULT_REGISTRY_PATH,
     load_registry,
 )
@@ -48,10 +48,10 @@ def _inspect(registry_path: Path) -> None:
             )
         for profile in model.build_profiles.values():
             match profile.builder:
-                case BuildType.FETCH:
+                case BuildType.FETCH_HUGGINGFACE:
                     print(
                         f"  build {profile.name}: {profile.builder.value}, "
-                        f"source={profile.source.kind.value}, output={profile.output}"
+                        f"repo={profile.repo_id}, output={profile.output}"
                     )
                 case BuildType.ONNXRUNTIME_BUNDLE:
                     providers = ", ".join(profile.providers)

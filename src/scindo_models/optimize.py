@@ -28,5 +28,3 @@ def optimization_sample(model_type: ModelType) -> np.ndarray:
         case ModelType.PP_DOCLAYOUT_V3:
             size = PPDocLayoutV3Config().input_size
             return np.zeros((size, size, 3), dtype=np.uint8)
-
-    raise ValueError(f"Unsupported model for optimization: {model_type.value}")

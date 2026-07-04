@@ -9,17 +9,6 @@ class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
-class HuggingFaceSourceConfig(StrictModel):
-    kind: Literal["huggingface"] = Field(
-        description="Artifact source backed by the Hugging Face Hub."
-    )
-    repo_id: str = Field(description="Hugging Face repository id.")
-    revision: str = Field(default="main", description="Repository revision to fetch.")
-
-
-SourceConfig = Annotated[HuggingFaceSourceConfig, Field(discriminator="kind")]
-
-
 class OnnxModelArtifactConfig(StrictModel):
     kind: Literal["onnx_model"] = Field(description="Raw ONNX model artifact.")
     path: str = Field(description="Artifact directory relative to the model root.")
@@ -40,11 +29,12 @@ ArtifactConfig = Annotated[
 ]
 
 
-class FetchBuildConfig(StrictModel):
-    builder: Literal["fetch"] = Field(
-        description="Fetches a source file into a raw artifact."
+class FetchHuggingFaceBuildConfig(StrictModel):
+    builder: Literal["fetch-huggingface"] = Field(
+        description="Fetches a Hugging Face Hub file into a raw artifact."
     )
-    source: str = Field(description="Input source name.")
+    repo_id: str = Field(description="Hugging Face repository id.")
+    revision: str = Field(default="main", description="Repository revision to fetch.")
     output: str = Field(description="Output artifact name.")
     file: str = Field(description="Source filename copied into the artifact.")
 
@@ -70,7 +60,7 @@ class OnnxRuntimeBundleBuildConfig(StrictModel):
 
 
 BuildProfileConfig = Annotated[
-    FetchBuildConfig | OnnxRuntimeBundleBuildConfig,
+    FetchHuggingFaceBuildConfig | OnnxRuntimeBundleBuildConfig,
     Field(discriminator="builder"),
 ]
 
@@ -79,10 +69,6 @@ class ModelConfig(StrictModel):
     name: str = Field(description="Model registry name.")
     model_type: str = Field(description="Model implementation type.")
     root: str = Field(description="Local root directory for model artifacts.")
-    sources: dict[str, SourceConfig] = Field(
-        default_factory=dict,
-        description="External artifact sources keyed by source name.",
-    )
     artifacts: dict[str, ArtifactConfig] = Field(
         description="Deployable artifacts keyed by artifact name."
     )
@@ -102,12 +88,8 @@ class ModelConfig(StrictModel):
 
         for profile_name, profile in self.build_profiles.items():
             match profile.builder:
-                case "fetch":
-                    if profile.source not in self.sources:
-                        raise ValueError(
-                            f"build_profiles.{profile_name}.source references unknown "
-                            f"source: {profile.source}"
-                        )
+                case "fetch-huggingface":
+                    pass
                 case "onnxruntime-bundle":
                     if profile.input not in self.artifacts:
                         raise ValueError(

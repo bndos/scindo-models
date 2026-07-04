@@ -5,11 +5,6 @@ name = "pp_doclayout_v3"
 model_type = "pp_doclayout_v3"
 root = "artifacts/pp_doclayout_v3"
 
-[model.sources.hf_onnx]
-kind = "huggingface"
-repo_id = "PaddlePaddle/PP-DocLayoutV3_onnx"
-revision = "main"
-
 [model.artifacts.onnx]
 kind = "onnx_model"
 path = "onnx"
@@ -31,8 +26,9 @@ path = "trt_fp16"
 build = "trt_fp16"
 
 [model.build_profiles.onnx]
-builder = "fetch"
-source = "hf_onnx"
+builder = "fetch-huggingface"
+repo_id = "PaddlePaddle/PP-DocLayoutV3_onnx"
+revision = "main"
 output = "onnx"
 file = "inference.onnx"
 

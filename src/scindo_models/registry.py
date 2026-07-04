@@ -1,97 +1,29 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum
 from pathlib import Path
-from typing import Literal
 
 import tomli
 
+from scindo_models.model_spec import (
+    ArtifactSpec,
+    BuildProfileSpec,
+    BuildType,
+    FetchHuggingFaceBuildSpec,
+    ModelSpec,
+    OnnxRuntimeBundleBuildSpec,
+    parse_artifact_type,
+)
 from scindo_models.registry_schema import (
-    ArtifactConfig,
-    FetchBuildConfig,
+    FetchHuggingFaceBuildConfig,
     ModelConfig,
     ModelFileConfig,
     OnnxRuntimeBundleBuildConfig,
     RegistryConfig,
-    SourceConfig,
 )
 
 
 DEFAULT_REGISTRY_PATH = Path("models/registry.toml")
-
-
-class BuildType(Enum):
-    FETCH = "fetch"
-    ONNXRUNTIME_BUNDLE = "onnxruntime-bundle"
-
-
-class SourceType(Enum):
-    HUGGINGFACE = "huggingface"
-
-
-class ArtifactType(Enum):
-    ONNX_MODEL = "onnx_model"
-    ONNXRUNTIME_BUNDLE = "onnxruntime_bundle"
-
-
-@dataclass(frozen=True)
-class ArtifactSourceSpec:
-    kind: SourceType
-    repo_id: str
-    revision: str
-
-
-@dataclass(frozen=True)
-class ArtifactSpec:
-    name: str
-    kind: ArtifactType
-    path: Path
-    build: str
-
-
-@dataclass(frozen=True)
-class FetchBuildSpec:
-    name: str
-    builder: Literal[BuildType.FETCH]
-    source: ArtifactSourceSpec
-    output: str
-    file: str
-
-
-@dataclass(frozen=True)
-class OnnxRuntimeBundleBuildSpec:
-    name: str
-    builder: Literal[BuildType.ONNXRUNTIME_BUNDLE]
-    input: str
-    output: str
-    providers: tuple[str, ...]
-    outputs: tuple[str, ...] | None
-    provider_options: dict[str, dict[str, object]]
-
-
-BuildProfileSpec = FetchBuildSpec | OnnxRuntimeBundleBuildSpec
-
-
-@dataclass(frozen=True)
-class ModelSpec:
-    name: str
-    model_type: str
-    root: Path
-    artifacts: dict[str, ArtifactSpec]
-    build_profiles: dict[str, BuildProfileSpec]
-
-    def artifact(self, name: str) -> ArtifactSpec:
-        try:
-            return self.artifacts[name]
-        except KeyError as exc:
-            raise KeyError(f"Unknown artifact for {self.name}: {name}") from exc
-
-    def build_profile(self, name: str) -> BuildProfileSpec:
-        try:
-            return self.build_profiles[name]
-        except KeyError as exc:
-            raise KeyError(f"Unknown build profile for {self.name}: {name}") from exc
 
 
 @dataclass(frozen=True)
@@ -130,19 +62,16 @@ def _load_model_config(path: Path) -> ModelConfig:
 def _model_spec(config: ModelConfig) -> ModelSpec:
     root = Path(config.root)
     artifacts = {
-        artifact_name: _artifact_spec(
-            artifact_name,
-            artifact_config,
-            root=root,
+        artifact_name: ArtifactSpec(
+            name=artifact_name,
+            kind=parse_artifact_type(artifact_config.kind),
+            path=root / artifact_config.path,
+            build=artifact_config.build,
         )
         for artifact_name, artifact_config in config.artifacts.items()
     }
     build_profiles = {
-        profile_name: _build_profile_spec(
-            profile_name,
-            profile_config,
-            sources=config.sources,
-        )
+        profile_name: _build_profile_spec(profile_name, profile_config)
         for profile_name, profile_config in config.build_profiles.items()
     }
 
@@ -155,47 +84,17 @@ def _model_spec(config: ModelConfig) -> ModelSpec:
     )
 
 
-def _artifact_spec(
-    name: str,
-    config: ArtifactConfig,
-    root: Path,
-) -> ArtifactSpec:
-    return ArtifactSpec(
-        name=name,
-        kind=parse_artifact_type(config.kind),
-        path=root / config.path,
-        build=config.build,
-    )
-
-
-def parse_artifact_type(value: str) -> ArtifactType:
-    try:
-        return ArtifactType(value)
-    except ValueError as exc:
-        raise ValueError(f"Unsupported artifact type: {value}") from exc
-
-
-def _source_spec(config: SourceConfig) -> ArtifactSourceSpec:
-    match config.kind:
-        case "huggingface":
-            return ArtifactSourceSpec(
-                kind=SourceType.HUGGINGFACE,
-                repo_id=config.repo_id,
-                revision=config.revision,
-            )
-
-
 def _build_profile_spec(
     name: str,
-    config: FetchBuildConfig | OnnxRuntimeBundleBuildConfig,
-    sources: dict[str, SourceConfig],
+    config: FetchHuggingFaceBuildConfig | OnnxRuntimeBundleBuildConfig,
 ) -> BuildProfileSpec:
     match config.builder:
-        case "fetch":
-            return FetchBuildSpec(
+        case "fetch-huggingface":
+            return FetchHuggingFaceBuildSpec(
                 name=name,
-                builder=BuildType.FETCH,
-                source=_source_spec(sources[config.source]),
+                builder=BuildType.FETCH_HUGGINGFACE,
+                repo_id=config.repo_id,
+                revision=config.revision,
                 output=config.output,
                 file=config.file,
             )
