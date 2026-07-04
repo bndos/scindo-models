@@ -7,10 +7,14 @@ from pathlib import Path
 from typing import Literal
 
 from scindo_models.artifacts import (
+    ArtifactModel,
     ArtifactType,
     MANIFEST_FILE,
+    OnnxModelFiles,
+    OnnxModelManifest,
+    OnnxRuntimeBundleManifest,
+    OnnxRuntimeConfig,
     read_manifest,
-    write_manifest,
 )
 
 
@@ -100,14 +104,11 @@ class ModelSpec:
         model_path = output_artifact.path / build_profile.file
         if fetched_path.resolve() != model_path.resolve():
             shutil.copy2(fetched_path, model_path)
-        write_manifest(
-            output_artifact.path,
-            {
-                "kind": ArtifactType.ONNX_MODEL.value,
-                "model": {"type": self.model_type},
-                "files": {"model": build_profile.file},
-            },
-        )
+        OnnxModelManifest(
+            kind=ArtifactType.ONNX_MODEL,
+            model=ArtifactModel(type=self.model_type),
+            files=OnnxModelFiles(model=Path(build_profile.file)),
+        ).write(output_artifact.path)
 
     def _materialize_onnxruntime_bundle(
         self,
@@ -123,22 +124,17 @@ class ModelSpec:
             output_artifact.path / input_manifest.model_path,
         )
         _create_provider_paths(output_artifact.path, build_profile.provider_options)
-        write_manifest(
-            output_artifact.path,
-            {
-                "kind": ArtifactType.ONNXRUNTIME_BUNDLE.value,
-                "model": {"type": self.model_type},
-                "runtime": {
-                    "engine": "onnxruntime",
-                    "model_file": str(input_manifest.model_path),
-                    "providers": list(build_profile.providers),
-                    "provider_options": build_profile.provider_options,
-                    "outputs": list(build_profile.outputs)
-                    if build_profile.outputs
-                    else None,
-                },
-            },
-        )
+        OnnxRuntimeBundleManifest(
+            kind=ArtifactType.ONNXRUNTIME_BUNDLE,
+            model=ArtifactModel(type=self.model_type),
+            runtime=OnnxRuntimeConfig(
+                engine="onnxruntime",
+                model_file=input_manifest.model_path,
+                providers=build_profile.providers,
+                provider_options=build_profile.provider_options,
+                outputs=build_profile.outputs,
+            ),
+        ).write(output_artifact.path)
 
     def _is_materialized(self, artifact: ArtifactSpec) -> bool:
         if artifact.kind == ArtifactType.ONNX_MODEL:
