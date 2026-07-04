@@ -23,6 +23,11 @@ class PPDocLayoutV3(ScindoModel):
         self.session = session
         self.config = config or PPDocLayoutV3Config()
 
+    @classmethod
+    def optimization_sample(cls) -> np.ndarray:
+        size = PPDocLayoutV3Config().input_size
+        return np.zeros((size, size, 3), dtype=np.uint8)
+
     def __call__(self, image: np.ndarray) -> TensorMap:
         return self.session(self.preprocess(image))
 

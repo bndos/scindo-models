@@ -12,7 +12,6 @@ from scindo_models.model_spec import (
     FetchHuggingFaceBuildSpec,
     ModelSpec,
     OnnxRuntimeBundleBuildSpec,
-    parse_artifact_type,
 )
 from scindo_models.registry_schema import (
     FetchHuggingFaceBuildConfig,
@@ -64,7 +63,7 @@ def _model_spec(config: ModelConfig) -> ModelSpec:
     artifacts = {
         artifact_name: ArtifactSpec(
             name=artifact_name,
-            kind=parse_artifact_type(artifact_config.kind),
+            kind=artifact_config.kind,
             path=root / artifact_config.path,
             build=artifact_config.build,
         )
@@ -89,7 +88,7 @@ def _build_profile_spec(
     config: FetchHuggingFaceBuildConfig | OnnxRuntimeBundleBuildConfig,
 ) -> BuildProfileSpec:
     match config.builder:
-        case "fetch-huggingface":
+        case BuildType.FETCH_HUGGINGFACE:
             return FetchHuggingFaceBuildSpec(
                 name=name,
                 builder=BuildType.FETCH_HUGGINGFACE,
@@ -98,7 +97,7 @@ def _build_profile_spec(
                 output=config.output,
                 file=config.file,
             )
-        case "onnxruntime-bundle":
+        case BuildType.ONNXRUNTIME_BUNDLE:
             return OnnxRuntimeBundleBuildSpec(
                 name=name,
                 builder=BuildType.ONNXRUNTIME_BUNDLE,

@@ -4,19 +4,25 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from scindo_models.artifacts import ArtifactType
+from scindo_models.model_spec import BuildType
+from scindo_models.models.base import ModelType
+
 
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
 
 class OnnxModelArtifactConfig(StrictModel):
-    kind: Literal["onnx_model"] = Field(description="Raw ONNX model artifact.")
+    kind: Literal[ArtifactType.ONNX_MODEL] = Field(
+        description="Raw ONNX model artifact."
+    )
     path: str = Field(description="Artifact directory relative to the model root.")
     build: str = Field(description="Build profile used to materialize this artifact.")
 
 
 class OnnxRuntimeBundleArtifactConfig(StrictModel):
-    kind: Literal["onnxruntime_bundle"] = Field(
+    kind: Literal[ArtifactType.ONNXRUNTIME_BUNDLE] = Field(
         description="Self-contained ONNX Runtime artifact bundle."
     )
     path: str = Field(description="Bundle directory relative to the model root.")
@@ -30,7 +36,7 @@ ArtifactConfig = Annotated[
 
 
 class FetchHuggingFaceBuildConfig(StrictModel):
-    builder: Literal["fetch-huggingface"] = Field(
+    builder: Literal[BuildType.FETCH_HUGGINGFACE] = Field(
         description="Fetches a Hugging Face Hub file into a raw artifact."
     )
     repo_id: str = Field(description="Hugging Face repository id.")
@@ -40,7 +46,7 @@ class FetchHuggingFaceBuildConfig(StrictModel):
 
 
 class OnnxRuntimeBundleBuildConfig(StrictModel):
-    builder: Literal["onnxruntime-bundle"] = Field(
+    builder: Literal[BuildType.ONNXRUNTIME_BUNDLE] = Field(
         description="Builds an ONNX Runtime artifact bundle from an ONNX artifact."
     )
     input: str = Field(description="Input ONNX artifact name.")
@@ -67,7 +73,7 @@ BuildProfileConfig = Annotated[
 
 class ModelConfig(StrictModel):
     name: str = Field(description="Model registry name.")
-    model_type: str = Field(description="Model implementation type.")
+    model_type: ModelType = Field(description="Model implementation type.")
     root: str = Field(description="Local root directory for model artifacts.")
     artifacts: dict[str, ArtifactConfig] = Field(
         description="Deployable artifacts keyed by artifact name."
@@ -88,9 +94,9 @@ class ModelConfig(StrictModel):
 
         for profile_name, profile in self.build_profiles.items():
             match profile.builder:
-                case "fetch-huggingface":
+                case BuildType.FETCH_HUGGINGFACE:
                     pass
-                case "onnxruntime-bundle":
+                case BuildType.ONNXRUNTIME_BUNDLE:
                     if profile.input not in self.artifacts:
                         raise ValueError(
                             f"build_profiles.{profile_name}.input references unknown "

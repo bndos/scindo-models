@@ -3,10 +3,11 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from scindo_models.builders import ArtifactMaterializer
 from scindo_models.model_spec import BuildType
-from scindo_models.optimize import optimize_artifact
 from scindo_models.registry import (
     DEFAULT_REGISTRY_PATH,
+    ModelRegistry,
     load_registry,
 )
 
@@ -24,22 +25,22 @@ def main() -> None:
     optimize_parser.add_argument("--registry", default=str(DEFAULT_REGISTRY_PATH))
 
     args = parser.parse_args()
+    registry = load_registry(Path(args.registry))
     if args.command == "inspect":
-        _inspect(Path(args.registry))
+        _inspect(registry)
         return
     if args.command == "optimize":
         _optimize(
+            registry=registry,
             model_name=args.model,
             artifact_name=args.artifact,
-            registry_path=Path(args.registry),
         )
         return
 
     raise ValueError(f"Unsupported command: {args.command}")
 
 
-def _inspect(registry_path: Path) -> None:
-    registry = load_registry(registry_path)
+def _inspect(registry: ModelRegistry) -> None:
     for model in registry.models.values():
         print(model.name)
         for artifact in model.artifacts.values():
@@ -63,13 +64,13 @@ def _inspect(registry_path: Path) -> None:
 
 
 def _optimize(
+    registry: ModelRegistry,
     model_name: str,
     artifact_name: str,
-    registry_path: Path,
 ) -> None:
-    outputs = optimize_artifact(model_name, artifact_name, registry_path)
-    for name, value in outputs.items():
-        print(f"{name}: shape={value.shape}, dtype={value.dtype}")
+    model = registry.model(model_name)
+    artifact_path = ArtifactMaterializer(model).ensure(artifact_name).path
+    print(f"{model_name}/{artifact_name}: {artifact_path}")
 
 
 if __name__ == "__main__":
