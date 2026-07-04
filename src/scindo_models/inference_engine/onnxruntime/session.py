@@ -5,7 +5,7 @@ from typing import Any
 
 from scindo_models.artifacts import (
     OnnxRuntimeBundleManifest,
-    read_onnxruntime_manifest,
+    read_manifest_as,
 )
 from scindo_models.inference_engine.base import (
     InferSession,
@@ -19,7 +19,7 @@ class OrtInferSession(InferSession):
         import onnxruntime as ort  # noqa: PLC0415
 
         self.artifact_path = artifact_path
-        self.manifest = read_onnxruntime_manifest(artifact_path)
+        self.manifest = read_manifest_as(artifact_path, OnnxRuntimeBundleManifest)
         self.model_path = artifact_path / self.manifest.model_path
 
         available = set(ort.get_available_providers())

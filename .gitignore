@@ -3,7 +3,7 @@
 __pycache__/
 *.pyc
 
-artifacts/
+/artifacts/
 .env
 .dev/
 *.egg-info/
