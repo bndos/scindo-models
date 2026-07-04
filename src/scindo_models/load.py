@@ -3,10 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 
 from scindo_models.artifacts import read_onnxruntime_manifest
-from scindo_models.inference_engine.base import get_engine, parse_engine_type
 from scindo_models.inference_engine.base import InferSession
-from scindo_models.models.base import (
-    ScindoModel,
+from scindo_models.inference_engine.factory import get_engine, parse_engine_type
+from scindo_models.models.base import ScindoModel
+from scindo_models.models.factory import (
     get_model,
     parse_model_type,
 )

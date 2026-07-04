@@ -28,6 +28,11 @@ build-backend = "setuptools.build_meta"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.ruff.lint]
+extend-select = [
+    "PLC0415",
+]
+
 [dependency-groups]
 dev = [
     "debugpy>=1.8.21",

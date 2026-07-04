@@ -6,7 +6,7 @@ import numpy as np
 
 from scindo_models.inference_engine.base import TensorMap
 from scindo_models.load import load_model
-from scindo_models.models.base import ModelType, parse_model_type
+from scindo_models.models.factory import ModelType, parse_model_type
 from scindo_models.models.pp_doclayout_v3.model import PPDocLayoutV3Config
 from scindo_models.registry import DEFAULT_REGISTRY_PATH, load_registry
 

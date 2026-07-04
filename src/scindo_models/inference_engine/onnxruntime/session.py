@@ -16,7 +16,7 @@ from scindo_models.inference_engine.base import (
 
 class OrtInferSession(InferSession):
     def __init__(self, artifact_path: Path):
-        import onnxruntime as ort
+        import onnxruntime as ort  # noqa: PLC0415
 
         self.artifact_path = artifact_path
         self.manifest = read_onnxruntime_manifest(artifact_path)

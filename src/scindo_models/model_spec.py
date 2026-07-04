@@ -6,6 +6,8 @@ from enum import Enum
 from pathlib import Path
 from typing import Literal
 
+from huggingface_hub import hf_hub_download
+
 from scindo_models.artifacts import (
     ArtifactModel,
     ArtifactType,
@@ -40,6 +42,27 @@ class FetchHuggingFaceBuildSpec:
     output: str
     file: str
 
+    @property
+    def input_artifact(self) -> None:
+        return None
+
+    def materialize(self, model: ModelSpec) -> None:
+        output_artifact = model.artifact(self.output)
+        fetched_path = _fetch_huggingface(
+            repo_id=self.repo_id,
+            revision=self.revision,
+            filename=self.file,
+            local_dir=output_artifact.path,
+        )
+        model_path = output_artifact.path / self.file
+        if fetched_path.resolve() != model_path.resolve():
+            shutil.copy2(fetched_path, model_path)
+        OnnxModelManifest(
+            kind=ArtifactType.ONNX_MODEL,
+            model=ArtifactModel(type=model.model_type),
+            files=OnnxModelFiles(model=Path(self.file)),
+        ).write(output_artifact.path)
+
 
 @dataclass(frozen=True)
 class OnnxRuntimeBundleBuildSpec:
@@ -50,6 +73,33 @@ class OnnxRuntimeBundleBuildSpec:
     providers: tuple[str, ...]
     outputs: tuple[str, ...] | None
     provider_options: dict[str, dict[str, object]]
+
+    @property
+    def input_artifact(self) -> str:
+        return self.input
+
+    def materialize(self, model: ModelSpec) -> None:
+        input_artifact = model.artifact(self.input)
+        input_manifest = read_manifest(input_artifact.path)
+        output_artifact = model.artifact(self.output)
+
+        output_artifact.path.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(
+            input_artifact.path / input_manifest.model_path,
+            output_artifact.path / input_manifest.model_path,
+        )
+        _create_provider_paths(output_artifact.path, self.provider_options)
+        OnnxRuntimeBundleManifest(
+            kind=ArtifactType.ONNXRUNTIME_BUNDLE,
+            model=ArtifactModel(type=model.model_type),
+            runtime=OnnxRuntimeConfig(
+                engine="onnxruntime",
+                model_file=input_manifest.model_path,
+                providers=self.providers,
+                provider_options=self.provider_options,
+                outputs=self.outputs,
+            ),
+        ).write(output_artifact.path)
 
 
 BuildProfileSpec = FetchHuggingFaceBuildSpec | OnnxRuntimeBundleBuildSpec
@@ -80,61 +130,12 @@ class ModelSpec:
         if self._is_materialized(artifact):
             return artifact.path
 
-        self._materialize(self.build_profile(artifact.build))
+        build_profile = self.build_profile(artifact.build)
+        if build_profile.input_artifact is not None:
+            self.ensure_artifact(build_profile.input_artifact)
+
+        build_profile.materialize(self)
         return artifact.path
-
-    def _materialize(self, build_profile: BuildProfileSpec) -> None:
-        match build_profile.builder:
-            case BuildType.FETCH_HUGGINGFACE:
-                self._materialize_fetch_huggingface(build_profile)
-            case BuildType.ONNXRUNTIME_BUNDLE:
-                self._materialize_onnxruntime_bundle(build_profile)
-
-    def _materialize_fetch_huggingface(
-        self,
-        build_profile: FetchHuggingFaceBuildSpec,
-    ) -> None:
-        output_artifact = self.artifact(build_profile.output)
-        fetched_path = _fetch_huggingface(
-            repo_id=build_profile.repo_id,
-            revision=build_profile.revision,
-            filename=build_profile.file,
-            local_dir=output_artifact.path,
-        )
-        model_path = output_artifact.path / build_profile.file
-        if fetched_path.resolve() != model_path.resolve():
-            shutil.copy2(fetched_path, model_path)
-        OnnxModelManifest(
-            kind=ArtifactType.ONNX_MODEL,
-            model=ArtifactModel(type=self.model_type),
-            files=OnnxModelFiles(model=Path(build_profile.file)),
-        ).write(output_artifact.path)
-
-    def _materialize_onnxruntime_bundle(
-        self,
-        build_profile: OnnxRuntimeBundleBuildSpec,
-    ) -> None:
-        input_path = self.ensure_artifact(build_profile.input)
-        input_manifest = read_manifest(input_path)
-        output_artifact = self.artifact(build_profile.output)
-
-        output_artifact.path.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(
-            input_path / input_manifest.model_path,
-            output_artifact.path / input_manifest.model_path,
-        )
-        _create_provider_paths(output_artifact.path, build_profile.provider_options)
-        OnnxRuntimeBundleManifest(
-            kind=ArtifactType.ONNXRUNTIME_BUNDLE,
-            model=ArtifactModel(type=self.model_type),
-            runtime=OnnxRuntimeConfig(
-                engine="onnxruntime",
-                model_file=input_manifest.model_path,
-                providers=build_profile.providers,
-                provider_options=build_profile.provider_options,
-                outputs=build_profile.outputs,
-            ),
-        ).write(output_artifact.path)
 
     def _is_materialized(self, artifact: ArtifactSpec) -> bool:
         if artifact.kind == ArtifactType.ONNX_MODEL:
@@ -158,8 +159,6 @@ def _fetch_huggingface(
     filename: str,
     local_dir: Path,
 ) -> Path:
-    from huggingface_hub import hf_hub_download
-
     local_dir.mkdir(parents=True, exist_ok=True)
     downloaded_path = hf_hub_download(
         repo_id=repo_id,
