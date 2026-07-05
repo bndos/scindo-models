@@ -13,6 +13,7 @@ class BuildType(str, Enum):
     FETCH_HUGGINGFACE = "fetch-huggingface"
     ONNXRUNTIME_BUNDLE = "onnxruntime-bundle"
     TRITON_ONNX = "triton-onnx"
+    TRITON_REPO = "triton-repo"
 
 
 @dataclass(frozen=True)
@@ -62,8 +63,42 @@ class TritonOnnxBuildSpec:
     max_batch_size: int
 
 
+@dataclass(frozen=True)
+class TritonRepoPreprocessSpec:
+    source: Path
+    model_name: str
+    version: int
+    input_map: dict[str, str]
+    output_map: dict[str, str]
+
+
+@dataclass(frozen=True)
+class TritonRepoInferSpec:
+    input: str
+    model_name: str
+    version: int
+    max_batch_size: int
+    input_map: dict[str, str]
+    output_map: dict[str, str]
+
+
+@dataclass(frozen=True)
+class TritonRepoBuildSpec:
+    name: str
+    builder: Literal[BuildType.TRITON_REPO]
+    output: str
+    model_name: str
+    version: int
+    max_batch_size: int
+    preprocess: TritonRepoPreprocessSpec
+    infer: TritonRepoInferSpec
+
+
 BuildProfileSpec = (
-    FetchHuggingFaceBuildSpec | OnnxRuntimeBundleBuildSpec | TritonOnnxBuildSpec
+    FetchHuggingFaceBuildSpec
+    | OnnxRuntimeBundleBuildSpec
+    | TritonOnnxBuildSpec
+    | TritonRepoBuildSpec
 )
 
 

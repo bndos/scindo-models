@@ -40,6 +40,16 @@ kind = "triton_model"
 path = "triton_ort_trt_fp16/pp_doclayout_v3"
 build = "triton_ort_trt_fp16"
 
+[model.artifacts.triton_service_ort_trt]
+kind = "triton_repo"
+path = "triton_service_ort_trt"
+build = "triton_service_ort_trt"
+
+[model.artifacts.triton_service_ort_trt_python]
+kind = "triton_repo"
+path = "triton_service_ort_trt_python"
+build = "triton_service_ort_trt_python"
+
 [model.build_profiles.onnx]
 builder = "fetch-huggingface"
 repo_id = "PaddlePaddle/PP-DocLayoutV3_onnx"
@@ -107,3 +117,51 @@ output = "triton_ort_trt_fp16"
 model_name = "pp_doclayout_v3"
 version = 1
 max_batch_size = 0
+
+[model.build_profiles.triton_service_ort_trt]
+builder = "triton-repo"
+output = "triton_service_ort_trt"
+model_name = "pp_doclayout_v3"
+version = 1
+max_batch_size = 0
+
+[model.build_profiles.triton_service_ort_trt.preprocess]
+source = "preprocessors/pp_doclayout_v3"
+model_name = "pp_doclayout_v3_preprocess"
+version = 1
+
+[model.build_profiles.triton_service_ort_trt.preprocess.output_map]
+image = "preprocessed_image"
+
+[model.build_profiles.triton_service_ort_trt.infer]
+input = "ort_trt"
+model_name = "pp_doclayout_v3_infer"
+version = 1
+max_batch_size = 0
+
+[model.build_profiles.triton_service_ort_trt.infer.input_map]
+image = "preprocessed_image"
+
+[model.build_profiles.triton_service_ort_trt_python]
+builder = "triton-repo"
+output = "triton_service_ort_trt_python"
+model_name = "pp_doclayout_v3"
+version = 1
+max_batch_size = 0
+
+[model.build_profiles.triton_service_ort_trt_python.preprocess]
+source = "preprocessors/pp_doclayout_v3_python"
+model_name = "pp_doclayout_v3_preprocess"
+version = 1
+
+[model.build_profiles.triton_service_ort_trt_python.preprocess.output_map]
+image = "preprocessed_image"
+
+[model.build_profiles.triton_service_ort_trt_python.infer]
+input = "ort_trt"
+model_name = "pp_doclayout_v3_infer"
+version = 1
+max_batch_size = 0
+
+[model.build_profiles.triton_service_ort_trt_python.infer.input_map]
+image = "preprocessed_image"

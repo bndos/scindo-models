@@ -8,6 +8,7 @@ from scindo_models.model_spec import (
     FetchHuggingFaceBuildSpec,
     OnnxRuntimeBundleBuildSpec,
     TritonOnnxBuildSpec,
+    TritonRepoBuildSpec,
 )
 from scindo_models.registry import (
     DEFAULT_REGISTRY_PATH,
@@ -69,6 +70,12 @@ def _inspect(registry: ModelRegistry) -> None:
                     print(
                         f"  build {profile.name}: {profile.builder.value}, "
                         f"input={profile.input}, output={profile.output}, "
+                        f"model={profile.model_name}"
+                    )
+                case TritonRepoBuildSpec():
+                    print(
+                        f"  build {profile.name}: {profile.builder.value}, "
+                        f"infer={profile.infer.input}, output={profile.output}, "
                         f"model={profile.model_name}"
                     )
 

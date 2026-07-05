@@ -14,6 +14,9 @@ from scindo_models.model_spec import (
     OnnxTransformSpec,
     OnnxRuntimeBundleBuildSpec,
     TritonOnnxBuildSpec,
+    TritonRepoBuildSpec,
+    TritonRepoInferSpec,
+    TritonRepoPreprocessSpec,
 )
 from scindo_models.registry_schema import (
     FetchHuggingFaceBuildConfig,
@@ -23,6 +26,7 @@ from scindo_models.registry_schema import (
     OnnxTransformConfig,
     RegistryConfig,
     TritonOnnxBuildConfig,
+    TritonRepoBuildConfig,
 )
 
 
@@ -91,7 +95,8 @@ def _build_profile_spec(
     name: str,
     config: FetchHuggingFaceBuildConfig
     | OnnxRuntimeBundleBuildConfig
-    | TritonOnnxBuildConfig,
+    | TritonOnnxBuildConfig
+    | TritonRepoBuildConfig,
 ) -> BuildProfileSpec:
     match config:
         case FetchHuggingFaceBuildConfig():
@@ -123,6 +128,30 @@ def _build_profile_spec(
                 model_name=config.model_name,
                 version=config.version,
                 max_batch_size=config.max_batch_size,
+            )
+        case TritonRepoBuildConfig():
+            return TritonRepoBuildSpec(
+                name=name,
+                builder=BuildType.TRITON_REPO,
+                output=config.output,
+                model_name=config.model_name,
+                version=config.version,
+                max_batch_size=config.max_batch_size,
+                preprocess=TritonRepoPreprocessSpec(
+                    source=Path(config.preprocess.source),
+                    model_name=config.preprocess.model_name,
+                    version=config.preprocess.version,
+                    input_map=config.preprocess.input_map,
+                    output_map=config.preprocess.output_map,
+                ),
+                infer=TritonRepoInferSpec(
+                    input=config.infer.input,
+                    model_name=config.infer.model_name,
+                    version=config.infer.version,
+                    max_batch_size=config.infer.max_batch_size,
+                    input_map=config.infer.input_map,
+                    output_map=config.infer.output_map,
+                ),
             )
 
 

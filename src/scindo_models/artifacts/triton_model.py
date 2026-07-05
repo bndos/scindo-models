@@ -29,7 +29,8 @@ class TritonExecutionAccelerator(StrictModel):
 
 class TritonModelConfig(StrictModel):
     name: str
-    platform: Literal["onnxruntime_onnx"]
+    platform: str | None = None
+    backend: str | None = None
     default_model_filename: str
     version: int
     max_batch_size: int
@@ -47,6 +48,26 @@ class TritonModelManifest(ArtifactManifestBase):
     @property
     def model_path(self) -> Path:
         return self.files.model
+
+    @property
+    def model_type(self) -> str:
+        return self.model.type
+
+
+class TritonRepoFiles(StrictModel):
+    root: Path
+    backends: Path
+
+
+class TritonRepoManifest(ArtifactManifestBase):
+    kind: Literal[ArtifactType.TRITON_REPO]
+    model: ArtifactModel
+    files: TritonRepoFiles
+    models: tuple[TritonModelConfig, ...]
+
+    @property
+    def model_path(self) -> Path:
+        return self.files.root
 
     @property
     def model_type(self) -> str:

@@ -6,6 +6,7 @@ from scindo_models.builders.base import ArtifactBuilder, MaterializedArtifact
 from scindo_models.builders.fetch_huggingface import FetchHuggingFaceBuilder
 from scindo_models.builders.onnxruntime_bundle import OnnxRuntimeBundleBuilder
 from scindo_models.builders.triton_onnx import TritonOnnxBuilder
+from scindo_models.builders.triton_repo import TritonRepoBuilder
 from scindo_models.model_spec import (
     ArtifactSpec,
     BuildProfileSpec,
@@ -13,6 +14,7 @@ from scindo_models.model_spec import (
     ModelSpec,
     OnnxRuntimeBundleBuildSpec,
     TritonOnnxBuildSpec,
+    TritonRepoBuildSpec,
 )
 
 
@@ -60,6 +62,12 @@ def _create_builder(
             )
         case TritonOnnxBuildSpec():
             return TritonOnnxBuilder(
+                model=model,
+                artifact=artifact,
+                profile=profile,
+            )
+        case TritonRepoBuildSpec():
+            return TritonRepoBuilder(
                 model=model,
                 artifact=artifact,
                 profile=profile,

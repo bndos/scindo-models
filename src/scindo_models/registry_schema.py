@@ -37,10 +37,19 @@ class TritonModelArtifactConfig(StrictModel):
     build: str = Field(description="Build profile used to materialize this artifact.")
 
 
+class TritonRepoArtifactConfig(StrictModel):
+    kind: Literal[ArtifactType.TRITON_REPO] = Field(
+        description="Deployable Triton model repository artifact."
+    )
+    path: str = Field(description="Artifact directory relative to the model root.")
+    build: str = Field(description="Build profile used to materialize this artifact.")
+
+
 ArtifactConfig = Annotated[
     OnnxModelArtifactConfig
     | OnnxRuntimeBundleArtifactConfig
-    | TritonModelArtifactConfig,
+    | TritonModelArtifactConfig
+    | TritonRepoArtifactConfig,
     Field(discriminator="kind"),
 ]
 
@@ -128,8 +137,60 @@ class TritonOnnxBuildConfig(StrictModel):
     )
 
 
+class TritonRepoPreprocessConfig(StrictModel):
+    source: str = Field(description="Makefile project that builds a Triton model.")
+    model_name: str = Field(description="Internal Triton preprocess model name.")
+    version: int = Field(default=1, ge=1, description="Preprocess model version.")
+    input_map: dict[str, str] = Field(
+        default_factory=dict,
+        description="Map preprocess model input tensor names to ensemble tensor names.",
+    )
+    output_map: dict[str, str] = Field(
+        default_factory=dict,
+        description="Map preprocess model output tensor names to ensemble tensor names.",
+    )
+
+
+class TritonRepoInferConfig(StrictModel):
+    input: str = Field(description="Input ONNX Runtime bundle artifact name.")
+    model_name: str = Field(description="Internal Triton inference model name.")
+    version: int = Field(default=1, ge=1, description="Inference model version.")
+    max_batch_size: int = Field(
+        default=0,
+        ge=0,
+        description="Inference max_batch_size.",
+    )
+    input_map: dict[str, str] = Field(
+        default_factory=dict,
+        description="Map inference model input tensor names to ensemble tensor names.",
+    )
+    output_map: dict[str, str] = Field(
+        default_factory=dict,
+        description="Map inference model output tensor names to ensemble tensor names.",
+    )
+
+
+class TritonRepoBuildConfig(StrictModel):
+    builder: Literal[BuildType.TRITON_REPO] = Field(
+        description="Builds a deployable Triton model repository."
+    )
+    output: str = Field(description="Output Triton repository artifact name.")
+    model_name: str = Field(description="Public Triton ensemble model name.")
+    version: int = Field(default=1, ge=1, description="Public ensemble model version.")
+    max_batch_size: int = Field(default=0, ge=0, description="Ensemble max_batch_size.")
+    preprocess: TritonRepoPreprocessConfig = Field(
+        description="Internal preprocess stage build configuration."
+    )
+    infer: TritonRepoInferConfig = Field(
+        description="Internal inference stage build configuration."
+    )
+
+
 BuildProfileConfig = Annotated[
-    FetchHuggingFaceBuildConfig | OnnxRuntimeBundleBuildConfig | TritonOnnxBuildConfig,
+    FetchHuggingFaceBuildConfig
+    | OnnxRuntimeBundleBuildConfig
+    | TritonOnnxBuildConfig
+    | TritonRepoBuildConfig,
     Field(discriminator="builder"),
 ]
 
@@ -206,6 +267,25 @@ class ModelConfig(StrictModel):
                         raise ValueError(
                             f"build_profiles.{profile_name}.output must reference "
                             "a triton_model artifact"
+                        )
+                case TritonRepoBuildConfig():
+                    if profile.infer.input not in self.artifacts:
+                        raise ValueError(
+                            f"build_profiles.{profile_name}.infer.input references "
+                            f"unknown artifact: {profile.infer.input}"
+                        )
+                    if (
+                        self.artifacts[profile.infer.input].kind
+                        != ArtifactType.ONNXRUNTIME_BUNDLE
+                    ):
+                        raise ValueError(
+                            f"build_profiles.{profile_name}.infer.input must "
+                            "reference an onnxruntime_bundle artifact"
+                        )
+                    if self.artifacts[profile.output].kind != ArtifactType.TRITON_REPO:
+                        raise ValueError(
+                            f"build_profiles.{profile_name}.output must reference "
+                            "a triton_repo artifact"
                         )
 
             output = self.artifacts[profile.output]

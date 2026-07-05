@@ -5,4 +5,21 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /workspace/scindo-models
 
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        build-essential \
+        libopencv-dev \
+        pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY pyproject.toml ./
+COPY src/ ./src/
+COPY models/ ./models/
+
+RUN pip install --break-system-packages --no-cache-dir \
+    "numpy>=1.26,<2" \
+    "onnx>=1.17" \
+    "onnxconverter-common>=1.14" \
+    -e .
+
 CMD ["tritonserver", "--model-repository=/models"]

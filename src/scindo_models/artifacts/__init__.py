@@ -14,6 +14,8 @@ from scindo_models.artifacts.triton_model import (
     TritonModelConfig,
     TritonModelFiles,
     TritonModelManifest,
+    TritonRepoFiles,
+    TritonRepoManifest,
     TritonTensorSpec,
 )
 from scindo_models.artifacts.reader import (
@@ -36,6 +38,8 @@ __all__ = [
     "TritonModelConfig",
     "TritonModelFiles",
     "TritonModelManifest",
+    "TritonRepoFiles",
+    "TritonRepoManifest",
     "TritonTensorSpec",
     "read_manifest",
     "read_manifest_as",

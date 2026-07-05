@@ -32,6 +32,88 @@ class OnnxTensorMetadata:
     specs: dict[str, TritonTensorSpec]
 
 
+def build_onnxruntime_model_dir(
+    input_path: Path,
+    input_manifest: OnnxRuntimeBundleManifest,
+    model_path: Path,
+    model_name: str,
+    version: int,
+    max_batch_size: int,
+    repository_path: str = "/models",
+) -> TritonModelConfig:
+    if model_path.exists():
+        shutil.rmtree(model_path)
+
+    model_file = input_manifest.model_path.name
+    model_dir = model_path / str(version)
+    model_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(input_path / input_manifest.model_path, model_dir / model_file)
+    copy_provider_cache_dirs(input_path, input_manifest, model_dir)
+
+    config = onnxruntime_model_config(
+        input_path=input_path,
+        input_manifest=input_manifest,
+        model_name=model_name,
+        version=version,
+        max_batch_size=max_batch_size,
+        repository_path=repository_path,
+    )
+    write_config(model_path / CONFIG_FILE, config)
+    return config
+
+
+def onnxruntime_model_config(
+    input_path: Path,
+    input_manifest: OnnxRuntimeBundleManifest,
+    model_name: str,
+    version: int,
+    max_batch_size: int,
+    repository_path: str = "/models",
+) -> TritonModelConfig:
+    tensors = _onnx_tensor_metadata(
+        input_path / input_manifest.model_path,
+        max_batch_size=max_batch_size,
+    )
+    output_names = input_manifest.outputs or tensors.outputs
+    inputs = tuple(_tensor_spec(tensors.specs, name) for name in tensors.inputs)
+    outputs = tuple(_tensor_spec(tensors.specs, name) for name in output_names)
+    return TritonModelConfig(
+        name=model_name,
+        platform="onnxruntime_onnx",
+        default_model_filename=input_manifest.model_path.name,
+        version=version,
+        max_batch_size=max_batch_size,
+        inputs=inputs,
+        outputs=outputs,
+        accelerators=_accelerators(
+            input_manifest,
+            model_name=model_name,
+            version=version,
+            repository_path=repository_path,
+        ),
+    )
+
+
+def copy_provider_cache_dirs(
+    input_path: Path,
+    input_manifest: OnnxRuntimeBundleManifest,
+    model_dir: Path,
+) -> None:
+    for options in input_manifest.provider_options.values():
+        cache_path = options.get("trt_engine_cache_path")
+        if not isinstance(cache_path, str):
+            continue
+
+        src = input_path / cache_path
+        dst = model_dir / cache_path
+        if dst.exists():
+            shutil.rmtree(dst)
+        if src.is_dir():
+            shutil.copytree(src, dst)
+        else:
+            dst.mkdir(parents=True, exist_ok=True)
+
+
 @dataclass(frozen=True)
 class TritonOnnxBuilder(ArtifactBuilder):
     model: ModelSpec
@@ -51,23 +133,21 @@ class TritonOnnxBuilder(ArtifactBuilder):
         if self.artifact.path.exists():
             shutil.rmtree(self.artifact.path)
 
-        model_file = input_manifest.model_path.name
-        model_dir = self.artifact.path / str(self.profile.version)
-        model_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(
-            input_artifact.path / input_manifest.model_path, model_dir / model_file
+        config = build_onnxruntime_model_dir(
+            input_path=input_artifact.path,
+            input_manifest=input_manifest,
+            model_path=self.artifact.path,
+            model_name=self.profile.model_name,
+            version=self.profile.version,
+            max_batch_size=self.profile.max_batch_size,
         )
-        self._copy_provider_cache_dirs(input_artifact.path, input_manifest, model_dir)
-
-        config = self._config(input_manifest)
-        _write_config(self.artifact.path / CONFIG_FILE, config)
 
         TritonModelManifest(
             kind=ArtifactType.TRITON_MODEL,
             model=ArtifactModel(type=self.model.model_type.value),
             files=TritonModelFiles(
                 config=Path(CONFIG_FILE),
-                model=Path(str(self.profile.version)) / model_file,
+                model=Path(str(self.profile.version)) / input_manifest.model_path.name,
             ),
             triton=config,
         ).write(self.artifact.path)
@@ -92,53 +172,20 @@ class TritonOnnxBuilder(ArtifactBuilder):
         ).is_file()
 
     def _config(self, input_manifest: OnnxRuntimeBundleManifest) -> TritonModelConfig:
-        tensors = _onnx_tensor_metadata(
-            self.model.artifact(self.profile.input).path / input_manifest.model_path,
-            max_batch_size=self.profile.max_batch_size,
-        )
-        output_names = input_manifest.outputs or tensors.outputs
-        inputs = tuple(_tensor_spec(tensors.specs, name) for name in tensors.inputs)
-        outputs = tuple(_tensor_spec(tensors.specs, name) for name in output_names)
-        return TritonModelConfig(
-            name=self.profile.model_name,
-            platform="onnxruntime_onnx",
-            default_model_filename=input_manifest.model_path.name,
+        return onnxruntime_model_config(
+            input_path=self.model.artifact(self.profile.input).path,
+            input_manifest=input_manifest,
+            model_name=self.profile.model_name,
             version=self.profile.version,
             max_batch_size=self.profile.max_batch_size,
-            inputs=inputs,
-            outputs=outputs,
-            accelerators=_accelerators(
-                input_manifest,
-                model_name=self.profile.model_name,
-                version=self.profile.version,
-            ),
         )
-
-    def _copy_provider_cache_dirs(
-        self,
-        input_path: Path,
-        input_manifest: OnnxRuntimeBundleManifest,
-        model_dir: Path,
-    ) -> None:
-        for options in input_manifest.provider_options.values():
-            cache_path = options.get("trt_engine_cache_path")
-            if not isinstance(cache_path, str):
-                continue
-
-            src = input_path / cache_path
-            dst = model_dir / cache_path
-            if dst.exists():
-                shutil.rmtree(dst)
-            if src.is_dir():
-                shutil.copytree(src, dst)
-            else:
-                dst.mkdir(parents=True, exist_ok=True)
 
 
 def _accelerators(
     manifest: OnnxRuntimeBundleManifest,
     model_name: str,
     version: int,
+    repository_path: str,
 ) -> tuple[TritonExecutionAccelerator, ...]:
     accelerators = []
     for provider in manifest.providers:
@@ -151,6 +198,7 @@ def _accelerators(
                             manifest.provider_options.get(provider, {}),
                             model_name=model_name,
                             version=version,
+                            repository_path=repository_path,
                         ),
                     )
                 )
@@ -171,12 +219,13 @@ def _tensorrt_parameters(
     options: dict[str, object],
     model_name: str,
     version: int,
+    repository_path: str,
 ) -> dict[str, str]:
     parameters = _string_parameters(options)
     cache_path = parameters.get("trt_engine_cache_path")
     if cache_path is not None and not cache_path.startswith("/"):
         parameters["trt_engine_cache_path"] = (
-            f"/models/{model_name}/{version}/{cache_path}"
+            f"{repository_path}/{model_name}/{version}/{cache_path}"
         )
     return parameters
 
@@ -283,7 +332,7 @@ def _triton_dtype(elem_type: int, tensor_proto: Any) -> str:
         raise ValueError(f"Unsupported ONNX tensor dtype: {elem_type}") from exc
 
 
-def _write_config(path: Path, config: TritonModelConfig) -> None:
+def write_config(path: Path, config: TritonModelConfig) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(_config_pbtxt(config), encoding="utf-8")
 
@@ -291,10 +340,14 @@ def _write_config(path: Path, config: TritonModelConfig) -> None:
 def _config_pbtxt(config: TritonModelConfig) -> str:
     lines = [
         f'name: "{config.name}"',
-        f'platform: "{config.platform}"',
-        f'default_model_filename: "{config.default_model_filename}"',
         f"max_batch_size: {config.max_batch_size}",
     ]
+    if config.platform is not None:
+        lines.append(f'platform: "{config.platform}"')
+    if config.backend is not None:
+        lines.append(f'backend: "{config.backend}"')
+    if config.default_model_filename:
+        lines.append(f'default_model_filename: "{config.default_model_filename}"')
     for tensor in config.inputs:
         lines.extend(_tensor_block("input", tensor))
     for tensor in config.outputs:

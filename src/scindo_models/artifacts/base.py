@@ -14,6 +14,7 @@ class ArtifactType(str, Enum):
     ONNX_MODEL = "onnx_model"
     ONNXRUNTIME_BUNDLE = "onnxruntime_bundle"
     TRITON_MODEL = "triton_model"
+    TRITON_REPO = "triton_repo"
 
 
 class StrictModel(BaseModel):
