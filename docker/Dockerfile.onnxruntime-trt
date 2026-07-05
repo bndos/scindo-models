@@ -1,4 +1,4 @@
-FROM nvcr.io/nvidia/tensorrt:24.06-py3
+FROM nvcr.io/nvidia/tensorrt:26.06-py3
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -6,12 +6,17 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /workspace/scindo-models
 
-RUN pip install --no-cache-dir --upgrade pip
-
 COPY pyproject.toml ./
 COPY src/ ./src/
 COPY models/ ./models/
 
-RUN pip install --no-cache-dir -e ".[onnxruntime-trt]"
+# This optimizer image owns TensorRT compatibility. A compatible ONNX Runtime
+# TensorRT EP build must be installed here, not in pyproject, because it is tied
+# to the CUDA and TensorRT ABI provided by the image.
+RUN pip install --break-system-packages --no-cache-dir \
+    "numpy>=1.26,<2" \
+    "onnx>=1.17" \
+    "onnxconverter-common>=1.14" \
+    -e .
 
 CMD ["python"]

@@ -14,9 +14,7 @@ dependencies = [
 onnxruntime-cpu = [
     "onnxruntime>=1.18",
 ]
-onnxruntime-trt = [
-    "onnxruntime-gpu>=1.18",
-]
+onnxruntime-trt = []
 
 [project.scripts]
 scindo-models = "scindo_models.cli:main"

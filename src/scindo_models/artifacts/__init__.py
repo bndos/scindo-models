@@ -9,6 +9,13 @@ from scindo_models.artifacts.onnxruntime_bundle import (
     OnnxRuntimeBundleManifest,
     OnnxRuntimeConfig,
 )
+from scindo_models.artifacts.triton_model import (
+    TritonExecutionAccelerator,
+    TritonModelConfig,
+    TritonModelFiles,
+    TritonModelManifest,
+    TritonTensorSpec,
+)
 from scindo_models.artifacts.reader import (
     ArtifactManifest,
     read_manifest,
@@ -25,6 +32,11 @@ __all__ = [
     "OnnxModelManifest",
     "OnnxRuntimeBundleManifest",
     "OnnxRuntimeConfig",
+    "TritonExecutionAccelerator",
+    "TritonModelConfig",
+    "TritonModelFiles",
+    "TritonModelManifest",
+    "TritonTensorSpec",
     "read_manifest",
     "read_manifest_as",
 ]

@@ -10,20 +10,35 @@ kind = "onnx_model"
 path = "onnx"
 build = "onnx"
 
-[model.artifacts.cuda]
+[model.artifacts.ort_cuda]
 kind = "onnxruntime_bundle"
-path = "cuda"
-build = "cuda"
+path = "ort_cuda"
+build = "ort_cuda"
 
-[model.artifacts.trt_fp32]
+[model.artifacts.ort_trt]
 kind = "onnxruntime_bundle"
-path = "trt_fp32"
-build = "trt_fp32"
+path = "trt"
+build = "ort_trt"
 
-[model.artifacts.trt_fp16]
+[model.artifacts.ort_trt_fp16]
 kind = "onnxruntime_bundle"
 path = "trt_fp16"
-build = "trt_fp16"
+build = "ort_trt_fp16"
+
+[model.artifacts.triton_ort_cuda]
+kind = "triton_model"
+path = "triton_ort_cuda/pp_doclayout_v3"
+build = "triton_ort_cuda"
+
+[model.artifacts.triton_ort_trt]
+kind = "triton_model"
+path = "triton_ort_trt/pp_doclayout_v3"
+build = "triton_ort_trt"
+
+[model.artifacts.triton_ort_trt_fp16]
+kind = "triton_model"
+path = "triton_ort_trt_fp16/pp_doclayout_v3"
+build = "triton_ort_trt_fp16"
 
 [model.build_profiles.onnx]
 builder = "fetch-huggingface"
@@ -32,35 +47,63 @@ revision = "main"
 output = "onnx"
 file = "inference.onnx"
 
-[model.build_profiles.cuda]
+[model.build_profiles.ort_cuda]
 builder = "onnxruntime-bundle"
 input = "onnx"
-output = "cuda"
+output = "ort_cuda"
 providers = ["CUDAExecutionProvider"]
 outputs = ["fetch_name_0", "fetch_name_1"]
 
-[model.build_profiles.trt_fp32]
+[model.build_profiles.ort_trt]
 builder = "onnxruntime-bundle"
 input = "onnx"
-output = "trt_fp32"
+output = "ort_trt"
 providers = ["TensorrtExecutionProvider", "CUDAExecutionProvider"]
 outputs = ["fetch_name_0", "fetch_name_1"]
 
-[model.build_profiles.trt_fp32.provider_options.TensorrtExecutionProvider]
+[model.build_profiles.ort_trt.provider_options.TensorrtExecutionProvider]
 trt_engine_cache_enable = true
 trt_engine_cache_path = "ort_trt_cache"
-trt_fp16_enable = false
+trt_engine_cache_prefix = "pp_doclayout_v3_ort_trt"
 trt_min_subgraph_size = 200
 
-[model.build_profiles.trt_fp16]
+[model.build_profiles.ort_trt_fp16]
 builder = "onnxruntime-bundle"
 input = "onnx"
-output = "trt_fp16"
+output = "ort_trt_fp16"
 providers = ["TensorrtExecutionProvider", "CUDAExecutionProvider"]
 outputs = ["fetch_name_0", "fetch_name_1"]
 
-[model.build_profiles.trt_fp16.provider_options.TensorrtExecutionProvider]
+[model.build_profiles.ort_trt_fp16.onnx_transform]
+precision = "fp16"
+keep_io_fp32 = true
+
+[model.build_profiles.ort_trt_fp16.provider_options.TensorrtExecutionProvider]
 trt_engine_cache_enable = true
 trt_engine_cache_path = "ort_trt_cache"
-trt_fp16_enable = true
+trt_engine_cache_prefix = "pp_doclayout_v3_ort_trt_fp16"
 trt_min_subgraph_size = 200
+
+[model.build_profiles.triton_ort_cuda]
+builder = "triton-onnx"
+input = "ort_cuda"
+output = "triton_ort_cuda"
+model_name = "pp_doclayout_v3"
+version = 1
+max_batch_size = 0
+
+[model.build_profiles.triton_ort_trt]
+builder = "triton-onnx"
+input = "ort_trt"
+output = "triton_ort_trt"
+model_name = "pp_doclayout_v3"
+version = 1
+max_batch_size = 0
+
+[model.build_profiles.triton_ort_trt_fp16]
+builder = "triton-onnx"
+input = "ort_trt_fp16"
+output = "triton_ort_trt_fp16"
+model_name = "pp_doclayout_v3"
+version = 1
+max_batch_size = 0

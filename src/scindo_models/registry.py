@@ -11,14 +11,18 @@ from scindo_models.model_spec import (
     BuildType,
     FetchHuggingFaceBuildSpec,
     ModelSpec,
+    OnnxTransformSpec,
     OnnxRuntimeBundleBuildSpec,
+    TritonOnnxBuildSpec,
 )
 from scindo_models.registry_schema import (
     FetchHuggingFaceBuildConfig,
     ModelConfig,
     ModelFileConfig,
     OnnxRuntimeBundleBuildConfig,
+    OnnxTransformConfig,
     RegistryConfig,
+    TritonOnnxBuildConfig,
 )
 
 
@@ -85,10 +89,12 @@ def _model_spec(config: ModelConfig) -> ModelSpec:
 
 def _build_profile_spec(
     name: str,
-    config: FetchHuggingFaceBuildConfig | OnnxRuntimeBundleBuildConfig,
+    config: FetchHuggingFaceBuildConfig
+    | OnnxRuntimeBundleBuildConfig
+    | TritonOnnxBuildConfig,
 ) -> BuildProfileSpec:
-    match config.builder:
-        case BuildType.FETCH_HUGGINGFACE:
+    match config:
+        case FetchHuggingFaceBuildConfig():
             return FetchHuggingFaceBuildSpec(
                 name=name,
                 builder=BuildType.FETCH_HUGGINGFACE,
@@ -97,7 +103,7 @@ def _build_profile_spec(
                 output=config.output,
                 file=config.file,
             )
-        case BuildType.ONNXRUNTIME_BUNDLE:
+        case OnnxRuntimeBundleBuildConfig():
             return OnnxRuntimeBundleBuildSpec(
                 name=name,
                 builder=BuildType.ONNXRUNTIME_BUNDLE,
@@ -106,4 +112,27 @@ def _build_profile_spec(
                 providers=tuple(config.providers),
                 outputs=tuple(config.outputs) if config.outputs is not None else None,
                 provider_options=config.provider_options,
+                onnx_transform=_onnx_transform_spec(config.onnx_transform),
             )
+        case TritonOnnxBuildConfig():
+            return TritonOnnxBuildSpec(
+                name=name,
+                builder=BuildType.TRITON_ONNX,
+                input=config.input,
+                output=config.output,
+                model_name=config.model_name,
+                version=config.version,
+                max_batch_size=config.max_batch_size,
+            )
+
+
+def _onnx_transform_spec(
+    config: OnnxTransformConfig | None,
+) -> OnnxTransformSpec | None:
+    if config is None:
+        return None
+
+    return OnnxTransformSpec(
+        precision=config.precision,
+        keep_io_fp32=config.keep_io_fp32,
+    )

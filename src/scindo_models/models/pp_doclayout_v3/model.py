@@ -36,11 +36,14 @@ class PPDocLayoutV3(ScindoModel):
             raise ValueError("Expected image with shape HxWx3")
 
         original_h, original_w = image.shape[:2]
-        tensor = cv2.resize(
-            image,
-            (self.config.input_size, self.config.input_size),
-            interpolation=cv2.INTER_CUBIC,
-        ).astype(np.float32)
+        tensor = (
+            cv2.resize(
+                image,
+                (self.config.input_size, self.config.input_size),
+                interpolation=cv2.INTER_CUBIC,
+            ).astype(np.float32)
+            / 255.0
+        )
         image_tensor = np.transpose(tensor, (2, 0, 1))[None, ...]
 
         return {

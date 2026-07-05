@@ -5,12 +5,14 @@ from dataclasses import dataclass
 from scindo_models.builders.base import ArtifactBuilder, MaterializedArtifact
 from scindo_models.builders.fetch_huggingface import FetchHuggingFaceBuilder
 from scindo_models.builders.onnxruntime_bundle import OnnxRuntimeBundleBuilder
+from scindo_models.builders.triton_onnx import TritonOnnxBuilder
 from scindo_models.model_spec import (
     ArtifactSpec,
     BuildProfileSpec,
     FetchHuggingFaceBuildSpec,
     ModelSpec,
     OnnxRuntimeBundleBuildSpec,
+    TritonOnnxBuildSpec,
 )
 
 
@@ -52,6 +54,12 @@ def _create_builder(
             )
         case OnnxRuntimeBundleBuildSpec():
             return OnnxRuntimeBundleBuilder(
+                model=model,
+                artifact=artifact,
+                profile=profile,
+            )
+        case TritonOnnxBuildSpec():
+            return TritonOnnxBuilder(
                 model=model,
                 artifact=artifact,
                 profile=profile,

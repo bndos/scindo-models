@@ -4,7 +4,11 @@ import argparse
 from pathlib import Path
 
 from scindo_models.builders import ArtifactMaterializer
-from scindo_models.model_spec import BuildType
+from scindo_models.model_spec import (
+    FetchHuggingFaceBuildSpec,
+    OnnxRuntimeBundleBuildSpec,
+    TritonOnnxBuildSpec,
+)
 from scindo_models.registry import (
     DEFAULT_REGISTRY_PATH,
     ModelRegistry,
@@ -48,18 +52,24 @@ def _inspect(registry: ModelRegistry) -> None:
                 f"  artifact {artifact.name}: {artifact.kind.value} -> {artifact.path}"
             )
         for profile in model.build_profiles.values():
-            match profile.builder:
-                case BuildType.FETCH_HUGGINGFACE:
+            match profile:
+                case FetchHuggingFaceBuildSpec():
                     print(
                         f"  build {profile.name}: {profile.builder.value}, "
                         f"repo={profile.repo_id}, output={profile.output}"
                     )
-                case BuildType.ONNXRUNTIME_BUNDLE:
+                case OnnxRuntimeBundleBuildSpec():
                     providers = ", ".join(profile.providers)
                     print(
                         f"  build {profile.name}: {profile.builder.value}, "
                         f"input={profile.input}, output={profile.output}, "
                         f"providers=[{providers}]"
+                    )
+                case TritonOnnxBuildSpec():
+                    print(
+                        f"  build {profile.name}: {profile.builder.value}, "
+                        f"input={profile.input}, output={profile.output}, "
+                        f"model={profile.model_name}"
                     )
 
 

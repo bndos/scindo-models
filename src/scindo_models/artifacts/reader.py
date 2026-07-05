@@ -9,10 +9,11 @@ from pydantic import Field, TypeAdapter, ValidationError
 from scindo_models.artifacts.base import ArtifactManifestBase, MANIFEST_FILE
 from scindo_models.artifacts.onnx_model import OnnxModelManifest
 from scindo_models.artifacts.onnxruntime_bundle import OnnxRuntimeBundleManifest
+from scindo_models.artifacts.triton_model import TritonModelManifest
 
 
 ArtifactManifest = Annotated[
-    OnnxModelManifest | OnnxRuntimeBundleManifest,
+    OnnxModelManifest | OnnxRuntimeBundleManifest | TritonModelManifest,
     Field(discriminator="kind"),
 ]
 _ARTIFACT_MANIFEST_ADAPTER: TypeAdapter[ArtifactManifest] = TypeAdapter(

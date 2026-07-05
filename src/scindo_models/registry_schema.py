@@ -29,8 +29,18 @@ class OnnxRuntimeBundleArtifactConfig(StrictModel):
     build: str = Field(description="Build profile used to materialize this bundle.")
 
 
+class TritonModelArtifactConfig(StrictModel):
+    kind: Literal[ArtifactType.TRITON_MODEL] = Field(
+        description="Triton model repository artifact."
+    )
+    path: str = Field(description="Artifact directory relative to the model root.")
+    build: str = Field(description="Build profile used to materialize this artifact.")
+
+
 ArtifactConfig = Annotated[
-    OnnxModelArtifactConfig | OnnxRuntimeBundleArtifactConfig,
+    OnnxModelArtifactConfig
+    | OnnxRuntimeBundleArtifactConfig
+    | TritonModelArtifactConfig,
     Field(discriminator="kind"),
 ]
 
@@ -43,6 +53,16 @@ class FetchHuggingFaceBuildConfig(StrictModel):
     revision: str = Field(default="main", description="Repository revision to fetch.")
     output: str = Field(description="Output artifact name.")
     file: str = Field(description="Source filename copied into the artifact.")
+
+
+class OnnxTransformConfig(StrictModel):
+    precision: Literal["fp16"] = Field(
+        description="Precision transform applied to the ONNX graph before bundling."
+    )
+    keep_io_fp32: bool = Field(
+        default=True,
+        description="Keep public model inputs and outputs as FP32 when converting.",
+    )
 
 
 class OnnxRuntimeBundleBuildConfig(StrictModel):
@@ -63,10 +83,53 @@ class OnnxRuntimeBundleBuildConfig(StrictModel):
         default_factory=dict,
         description="Provider-specific runtime options.",
     )
+    onnx_transform: OnnxTransformConfig | None = Field(
+        default=None,
+        description="Optional ONNX graph transform applied inside the bundle.",
+    )
+
+    @model_validator(mode="after")
+    def validate_provider_options(self) -> OnnxRuntimeBundleBuildConfig:
+        tensorrt_options = self.provider_options.get("TensorrtExecutionProvider")
+        if tensorrt_options is None:
+            return self
+
+        unsupported_precision_flags = {
+            "trt_bf16_enable",
+            "trt_fp16_enable",
+            "trt_int8_enable",
+        }
+        unsupported = unsupported_precision_flags & tensorrt_options.keys()
+        if unsupported:
+            names = ", ".join(sorted(unsupported))
+            raise ValueError(
+                "TensorRT 11 uses strongly typed networks; precision must be "
+                f"encoded in the model artifact, not provider options: {names}"
+            )
+
+        return self
+
+
+class TritonOnnxBuildConfig(StrictModel):
+    builder: Literal[BuildType.TRITON_ONNX] = Field(
+        description=(
+            "Builds a Triton ONNX Runtime model repository from an ONNX Runtime "
+            "bundle artifact."
+        )
+    )
+    input: str = Field(description="Input ONNX Runtime bundle artifact name.")
+    output: str = Field(description="Output Triton artifact name.")
+    model_name: str = Field(description="Triton model name.")
+    version: int = Field(default=1, ge=1, description="Triton model version.")
+    max_batch_size: int = Field(
+        default=0,
+        ge=0,
+        description="Triton max_batch_size. Use 0 when model tensors include batch.",
+    )
 
 
 BuildProfileConfig = Annotated[
-    FetchHuggingFaceBuildConfig | OnnxRuntimeBundleBuildConfig,
+    FetchHuggingFaceBuildConfig | OnnxRuntimeBundleBuildConfig | TritonOnnxBuildConfig,
     Field(discriminator="builder"),
 ]
 
@@ -93,21 +156,58 @@ class ModelConfig(StrictModel):
                 )
 
         for profile_name, profile in self.build_profiles.items():
-            match profile.builder:
-                case BuildType.FETCH_HUGGINGFACE:
-                    pass
-                case BuildType.ONNXRUNTIME_BUNDLE:
-                    if profile.input not in self.artifacts:
-                        raise ValueError(
-                            f"build_profiles.{profile_name}.input references unknown "
-                            f"artifact: {profile.input}"
-                        )
-
             if profile.output not in self.artifacts:
                 raise ValueError(
                     f"build_profiles.{profile_name}.output references unknown "
                     f"artifact: {profile.output}"
                 )
+
+            match profile:
+                case FetchHuggingFaceBuildConfig():
+                    if self.artifacts[profile.output].kind != ArtifactType.ONNX_MODEL:
+                        raise ValueError(
+                            f"build_profiles.{profile_name}.output must reference "
+                            "an onnx_model artifact"
+                        )
+                case OnnxRuntimeBundleBuildConfig():
+                    if profile.input not in self.artifacts:
+                        raise ValueError(
+                            f"build_profiles.{profile_name}.input references unknown "
+                            f"artifact: {profile.input}"
+                        )
+                    if self.artifacts[profile.input].kind != ArtifactType.ONNX_MODEL:
+                        raise ValueError(
+                            f"build_profiles.{profile_name}.input must reference an "
+                            "onnx_model artifact"
+                        )
+                    if (
+                        self.artifacts[profile.output].kind
+                        != ArtifactType.ONNXRUNTIME_BUNDLE
+                    ):
+                        raise ValueError(
+                            f"build_profiles.{profile_name}.output must reference "
+                            "an onnxruntime_bundle artifact"
+                        )
+                case TritonOnnxBuildConfig():
+                    if profile.input not in self.artifacts:
+                        raise ValueError(
+                            f"build_profiles.{profile_name}.input references unknown "
+                            f"artifact: {profile.input}"
+                        )
+                    if (
+                        self.artifacts[profile.input].kind
+                        != ArtifactType.ONNXRUNTIME_BUNDLE
+                    ):
+                        raise ValueError(
+                            f"build_profiles.{profile_name}.input must reference an "
+                            "onnxruntime_bundle artifact"
+                        )
+                    if self.artifacts[profile.output].kind != ArtifactType.TRITON_MODEL:
+                        raise ValueError(
+                            f"build_profiles.{profile_name}.output must reference "
+                            "a triton_model artifact"
+                        )
+
             output = self.artifacts[profile.output]
             if output.build != profile_name:
                 raise ValueError(

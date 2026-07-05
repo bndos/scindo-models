@@ -12,6 +12,7 @@ from scindo_models.models.base import ModelType
 class BuildType(str, Enum):
     FETCH_HUGGINGFACE = "fetch-huggingface"
     ONNXRUNTIME_BUNDLE = "onnxruntime-bundle"
+    TRITON_ONNX = "triton-onnx"
 
 
 @dataclass(frozen=True)
@@ -33,6 +34,12 @@ class FetchHuggingFaceBuildSpec:
 
 
 @dataclass(frozen=True)
+class OnnxTransformSpec:
+    precision: Literal["fp16"]
+    keep_io_fp32: bool
+
+
+@dataclass(frozen=True)
 class OnnxRuntimeBundleBuildSpec:
     name: str
     builder: Literal[BuildType.ONNXRUNTIME_BUNDLE]
@@ -41,9 +48,23 @@ class OnnxRuntimeBundleBuildSpec:
     providers: tuple[str, ...]
     outputs: tuple[str, ...] | None
     provider_options: dict[str, dict[str, object]]
+    onnx_transform: OnnxTransformSpec | None
 
 
-BuildProfileSpec = FetchHuggingFaceBuildSpec | OnnxRuntimeBundleBuildSpec
+@dataclass(frozen=True)
+class TritonOnnxBuildSpec:
+    name: str
+    builder: Literal[BuildType.TRITON_ONNX]
+    input: str
+    output: str
+    model_name: str
+    version: int
+    max_batch_size: int
+
+
+BuildProfileSpec = (
+    FetchHuggingFaceBuildSpec | OnnxRuntimeBundleBuildSpec | TritonOnnxBuildSpec
+)
 
 
 @dataclass(frozen=True)

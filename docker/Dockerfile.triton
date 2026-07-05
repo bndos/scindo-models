@@ -1,0 +1,8 @@
+FROM nvcr.io/nvidia/tritonserver:26.06-py3
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /workspace/scindo-models
+
+CMD ["tritonserver", "--model-repository=/models"]

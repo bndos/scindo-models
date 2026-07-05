@@ -13,6 +13,7 @@ MANIFEST_FILE = "artifact.json"
 class ArtifactType(str, Enum):
     ONNX_MODEL = "onnx_model"
     ONNXRUNTIME_BUNDLE = "onnxruntime_bundle"
+    TRITON_MODEL = "triton_model"
 
 
 class StrictModel(BaseModel):
