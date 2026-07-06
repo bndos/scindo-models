@@ -436,6 +436,16 @@ wheels = [
 ]
 
 [[package]]
+name = "nvidia-nvimgcodec-cu13"
+version = "0.8.0.22"
+source = { registry = "https://pypi.org/simple" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b5/73/0de8c0b0efe300c06a8cf2b5668450d2d44c00baf8fe8462cf2b585fb21f/nvidia_nvimgcodec_cu13-0.8.0.22-py3-none-manylinux_2_28_aarch64.whl", hash = "sha256:3b525a78bdfb4d9baa0cb9798883f36efca524807b37453c43a95f2d9e3476bb", size = 30573758, upload_time = "2026-04-13T19:39:38.681Z" },
+    { url = "https://files.pythonhosted.org/packages/60/81/bdef6244778b96c039c36b561e85faa19411ad448f1d0453bd4f3f205d8b/nvidia_nvimgcodec_cu13-0.8.0.22-py3-none-manylinux_2_28_x86_64.whl", hash = "sha256:0efee8404d36a857e9d713635f8076b4e50c5b5446c526e569dd6ba5e6455b4a", size = 31932167, upload_time = "2026-04-13T19:40:37.256Z" },
+    { url = "https://files.pythonhosted.org/packages/21/e0/62b9d4ca2f75687029f4882204dbf2bc72c67e85d4155879513fcead7b3f/nvidia_nvimgcodec_cu13-0.8.0.22-py3-none-win_amd64.whl", hash = "sha256:3895ad7f73a496356b6e9028354359d10a7e815b8edc67346f8fd99cc21198b8", size = 14029261, upload_time = "2026-04-13T19:38:43.693Z" },
+]
+
+[[package]]
 name = "onnxruntime"
 version = "1.24.3"
 source = { registry = "https://pypi.org/simple" }
@@ -801,6 +811,9 @@ onnxruntime-cpu = [
     { name = "onnxruntime", version = "1.24.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
     { name = "onnxruntime", version = "1.27.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
 ]
+triton-gpu-decode = [
+    { name = "nvidia-nvimgcodec-cu13" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -813,12 +826,13 @@ dev = [
 requires-dist = [
     { name = "huggingface-hub", specifier = ">=0.23" },
     { name = "numpy", specifier = ">=1.24" },
+    { name = "nvidia-nvimgcodec-cu13", marker = "extra == 'triton-gpu-decode'", specifier = ">=0.8" },
     { name = "onnxruntime", marker = "extra == 'onnxruntime-cpu'", specifier = ">=1.18" },
     { name = "opencv-python-headless", specifier = ">=4.9,<5" },
     { name = "pydantic", specifier = ">=2.0" },
     { name = "tomli", specifier = ">=2.0.1" },
 ]
-provides-extras = ["onnxruntime-cpu", "onnxruntime-trt"]
+provides-extras = ["onnxruntime-cpu", "onnxruntime-trt", "triton-gpu-decode"]
 
 [package.metadata.requires-dev]
 dev = [

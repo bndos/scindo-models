@@ -20,6 +20,14 @@ RUN pip install --break-system-packages --no-cache-dir \
     "numpy>=1.26,<2" \
     "onnx>=1.17" \
     "onnxconverter-common>=1.14" \
-    -e .
+    -e .[triton-gpu-decode]
+
+# nvImageCodec installs into site-packages, not a system library directory,
+# so the dynamic linker needs pointing at it explicitly. Its nvJPEG/cudart
+# dependencies are already on the linker path via this base image's own
+# CUDA install. This path is specific to the pinned base image above.
+ENV NVIMGCODEC_ROOT=/usr/local/lib/python3.12/dist-packages/nvidia/nvimgcodec
+ENV LD_LIBRARY_PATH=${NVIMGCODEC_ROOT}:${LD_LIBRARY_PATH}
+ENV NVIMGCODEC_EXTENSIONS_PATH=${NVIMGCODEC_ROOT}/extensions
 
 CMD ["tritonserver", "--model-repository=/models"]

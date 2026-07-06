@@ -126,7 +126,7 @@ version = 1
 max_batch_size = 0
 
 [model.build_profiles.triton_service_ort_trt.preprocess]
-source = "preprocessors/pp_doclayout_v3"
+source = "serving/triton/preprocessors/pp_doclayout_v3"
 model_name = "pp_doclayout_v3_preprocess"
 version = 1
 
@@ -150,7 +150,7 @@ version = 1
 max_batch_size = 0
 
 [model.build_profiles.triton_service_ort_trt_python.preprocess]
-source = "preprocessors/pp_doclayout_v3_python"
+source = "serving/triton/preprocessors/pp_doclayout_v3_python"
 model_name = "pp_doclayout_v3_preprocess"
 version = 1
 
