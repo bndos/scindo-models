@@ -122,9 +122,10 @@ TRITONSERVER_Error *CleanupResponse(TRITONBACKEND_Response **response,
 }
 
 // Write all requested outputs for one request into its response, using the
-// i-th slice of the batch output arrays.
+// i-th slice of the batch output arrays. On error, *response is deleted and
+// set to nullptr via CleanupResponse.
 TRITONSERVER_Error *WriteRequestOutputs(TRITONBACKEND_Request *request,
-                                        TRITONBACKEND_Response *response,
+                                        TRITONBACKEND_Response **response,
                                         const float *image_slice,
                                         const float *im_shape_slice,
                                         const float *scale_factor_slice) {
@@ -132,28 +133,28 @@ TRITONSERVER_Error *WriteRequestOutputs(TRITONBACKEND_Request *request,
   if (IsRequested(request, "im_shape")) {
     const int64_t shape[] = {1, 2};
     TRITONSERVER_Error *err =
-        WriteOutput(response, "im_shape", TRITONSERVER_TYPE_FP32, shape, 2,
+        WriteOutput(*response, "im_shape", TRITONSERVER_TYPE_FP32, shape, 2,
                     im_shape_slice, 2 * sizeof(float));
     if (err != nullptr) {
-      return CleanupResponse(&response, err);
+      return CleanupResponse(response, err);
     }
   }
   if (IsRequested(request, "image")) {
     const int64_t shape[] = {1, 3, target_size, target_size};
     TRITONSERVER_Error *err = WriteOutput(
-        response, "image", TRITONSERVER_TYPE_FP32, shape, 4, image_slice,
+        *response, "image", TRITONSERVER_TYPE_FP32, shape, 4, image_slice,
         3 * static_cast<size_t>(target_size) * target_size * sizeof(float));
     if (err != nullptr) {
-      return CleanupResponse(&response, err);
+      return CleanupResponse(response, err);
     }
   }
   if (IsRequested(request, "scale_factor")) {
     const int64_t shape[] = {1, 2};
     TRITONSERVER_Error *err =
-        WriteOutput(response, "scale_factor", TRITONSERVER_TYPE_FP32, shape, 2,
+        WriteOutput(*response, "scale_factor", TRITONSERVER_TYPE_FP32, shape, 2,
                     scale_factor_slice, 2 * sizeof(float));
     if (err != nullptr) {
-      return CleanupResponse(&response, err);
+      return CleanupResponse(response, err);
     }
   }
   return nullptr;
@@ -583,7 +584,7 @@ TRITONBACKEND_ModelInstanceExecute(TRITONBACKEND_ModelInstance *instance,
       error = TRITONBACKEND_ResponseNew(&response, requests[i]);
       if (error == nullptr) {
         error = WriteRequestOutputs(
-            requests[i], response, batch_image.data() + i * kImageFloats,
+            requests[i], &response, batch_image.data() + i * kImageFloats,
             batch_im_shape.data() + i * 2, batch_scale_factor.data() + i * 2);
       }
       if (error == nullptr) {
@@ -594,7 +595,7 @@ TRITONBACKEND_ModelInstanceExecute(TRITONBACKEND_ModelInstance *instance,
             "failed sending response");
       } else {
         request_success = false;
-        // response was already cleaned up by WriteRequestOutputs; send error.
+        // response was deleted and nulled by WriteRequestOutputs; send error.
         TRITONSERVER_Error *send_error = SendError(requests[i], error);
         TRITONSERVER_ErrorDelete(error);
         error = nullptr;
