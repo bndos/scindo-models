@@ -3,12 +3,14 @@
 #include <cstdlib>
 #include <exception>
 #include <string>
+#include <vector>
 
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/imgproc.hpp>
 
 #include "constants.h"
 #include "nvimgcodec_raii.h"
+#include "preprocess.h"
 
 namespace {
 
@@ -20,8 +22,6 @@ using pp_doclayout_v3::FutureHandle;
 using pp_doclayout_v3::ImageHandle;
 using pp_doclayout_v3::InstanceHandle;
 using pp_doclayout_v3::kTargetSize;
-
-thread_local std::string g_last_error;
 
 struct DecoderState {
   InstanceHandle instance;
@@ -74,11 +74,6 @@ void WriteOutputTensors(const cv::Mat &decoded, float *image_output,
   cv::split(float_image, channels);
 }
 
-const char *Fail(const std::string &message) {
-  g_last_error = message;
-  return g_last_error.c_str();
-}
-
 } // namespace
 
 extern "C" void *pp_doclayout_v3_decoder_create(int device_id) {
@@ -121,24 +116,47 @@ extern "C" void pp_doclayout_v3_decoder_destroy(void *decoder_state) {
   delete static_cast<DecoderState *>(decoder_state);
 }
 
-extern "C" const char *
-pp_doclayout_v3_preprocess(void *decoder_state, const std::uint8_t *input,
-                           int64_t byte_size, float *image_output,
-                           float *im_shape_output, float *scale_factor_output) {
+void pp_doclayout_v3_preprocess_batch(
+    void *decoder_state, const std::vector<std::vector<std::uint8_t>> &images,
+    float *image_output, float *im_shape_output, float *scale_factor_output,
+    std::vector<std::string> *errors) {
+  const auto count = static_cast<int>(images.size());
+  errors->assign(count, "");
+
   auto *state = static_cast<DecoderState *>(decoder_state);
-  if (state == nullptr || input == nullptr || image_output == nullptr ||
-      im_shape_output == nullptr || scale_factor_output == nullptr ||
-      byte_size <= 0) {
-    return Fail("invalid arguments");
+  if (state == nullptr || image_output == nullptr ||
+      im_shape_output == nullptr || scale_factor_output == nullptr) {
+    errors->assign(count, "invalid arguments to preprocess_batch");
+    return;
   }
 
-  try {
+  // Per-image setup state. All handles are unique_ptr (move-only), so this
+  // struct is move-constructible and safe to store in a vector.
+  struct PerImage {
+    int idx;
+    CodeStreamHandle code_stream;
+    DeviceBufferHandle device_buffer;
+    ImageHandle image;
+    int src_width, src_height;
+  };
+
+  // create per-image nvImageCodec resources (sequential).
+  std::vector<PerImage> valid;
+  valid.reserve(count);
+
+  for (int i = 0; i < count; ++i) {
+    const auto &img = images[i];
+    if (img.empty()) {
+      (*errors)[i] = "empty image input";
+      continue;
+    }
+
     nvimgcodecCodeStream_t raw_stream = nullptr;
     if (nvimgcodecCodeStreamCreateFromHostMem(
-            state->instance.get(), &raw_stream, input,
-            static_cast<size_t>(byte_size),
+            state->instance.get(), &raw_stream, img.data(), img.size(),
             nullptr) != NVIMGCODEC_STATUS_SUCCESS) {
-      return Fail("failed to parse image code stream");
+      (*errors)[i] = "failed to parse image code stream";
+      continue;
     }
     CodeStreamHandle code_stream(raw_stream);
 
@@ -147,69 +165,101 @@ pp_doclayout_v3_preprocess(void *decoder_state, const std::uint8_t *input,
     source_info.struct_size = sizeof(source_info);
     if (nvimgcodecCodeStreamGetImageInfo(code_stream.get(), &source_info) !=
         NVIMGCODEC_STATUS_SUCCESS) {
-      return Fail("failed to read image info");
+      (*errors)[i] = "failed to read image info";
+      continue;
     }
 
-    const int width = static_cast<int>(source_info.plane_info[0].width);
-    const int height = static_cast<int>(source_info.plane_info[0].height);
-    if (width <= 0 || height <= 0) {
-      return Fail("image has invalid dimensions");
+    const int w = static_cast<int>(source_info.plane_info[0].width);
+    const int h = static_cast<int>(source_info.plane_info[0].height);
+    if (w <= 0 || h <= 0) {
+      (*errors)[i] = "image has invalid dimensions";
+      continue;
     }
 
-    const size_t decoded_size = static_cast<size_t>(width) * height * 3;
-    DeviceBufferHandle device_buffer = AllocateDeviceBuffer(decoded_size);
+    DeviceBufferHandle device_buffer =
+        AllocateDeviceBuffer(static_cast<size_t>(w) * h * 3);
     if (!device_buffer) {
-      return Fail("cudaMalloc failed for decode buffer");
+      (*errors)[i] = "cudaMalloc failed for decode buffer";
+      continue;
     }
 
     const nvimgcodecImageInfo_t target_info =
-        DecodeTargetInfo(width, height, device_buffer.get());
+        DecodeTargetInfo(w, h, device_buffer.get());
     nvimgcodecImage_t raw_image = nullptr;
     if (nvimgcodecImageCreate(state->instance.get(), &raw_image,
                               &target_info) != NVIMGCODEC_STATUS_SUCCESS) {
-      return Fail("failed to create decode target image");
+      (*errors)[i] = "failed to create decode target image";
+      continue;
     }
-    ImageHandle image(raw_image);
 
-    nvimgcodecDecodeParams_t decode_params{};
-    decode_params.struct_type = NVIMGCODEC_STRUCTURE_TYPE_DECODE_PARAMS;
-    decode_params.struct_size = sizeof(decode_params);
-    decode_params.apply_exif_orientation = 1;
+    valid.push_back({i, std::move(code_stream), std::move(device_buffer),
+                     ImageHandle(raw_image), w, h});
+  }
 
-    nvimgcodecCodeStream_t stream_handle = code_stream.get();
-    nvimgcodecImage_t image_handle = image.get();
-    nvimgcodecFuture_t raw_future = nullptr;
-    if (nvimgcodecDecoderDecode(state->decoder.get(), &stream_handle,
-                                &image_handle, 1, &decode_params,
-                                &raw_future) != NVIMGCODEC_STATUS_SUCCESS) {
-      return Fail("failed to submit decode");
+  if (valid.empty()) {
+    return;
+  }
+
+  // batch-decode all valid images in one nvImageCodec call.
+  std::vector<nvimgcodecCodeStream_t> raw_streams(valid.size());
+  std::vector<nvimgcodecImage_t> raw_images(valid.size());
+  for (size_t j = 0; j < valid.size(); ++j) {
+    raw_streams[j] = valid[j].code_stream.get();
+    raw_images[j] = valid[j].image.get();
+  }
+
+  nvimgcodecDecodeParams_t decode_params{};
+  decode_params.struct_type = NVIMGCODEC_STRUCTURE_TYPE_DECODE_PARAMS;
+  decode_params.struct_size = sizeof(decode_params);
+  decode_params.apply_exif_orientation = 1;
+
+  nvimgcodecFuture_t raw_future = nullptr;
+  if (nvimgcodecDecoderDecode(state->decoder.get(), raw_streams.data(),
+                              raw_images.data(), static_cast<int>(valid.size()),
+                              &decode_params,
+                              &raw_future) != NVIMGCODEC_STATUS_SUCCESS) {
+    for (const auto &s : valid) {
+      (*errors)[s.idx] = "failed to submit batch decode";
     }
-    FutureHandle future(raw_future);
-    nvimgcodecFutureWaitForAll(future.get());
+    return;
+  }
+  FutureHandle future(raw_future);
+  nvimgcodecFutureWaitForAll(future.get());
 
-    nvimgcodecProcessingStatus_t decode_status =
-        NVIMGCODEC_PROCESSING_STATUS_UNKNOWN;
-    size_t decode_status_count = 1;
-    nvimgcodecFutureGetProcessingStatus(future.get(), &decode_status,
-                                        &decode_status_count);
-    if (decode_status != NVIMGCODEC_PROCESSING_STATUS_SUCCESS) {
-      char message[64];
-      snprintf(message, sizeof(message),
-               "decode failed, nvImageCodec status 0x%x", decode_status);
-      return Fail(message);
+  std::vector<nvimgcodecProcessingStatus_t> statuses(
+      valid.size(), NVIMGCODEC_PROCESSING_STATUS_UNKNOWN);
+  size_t status_count = valid.size();
+  nvimgcodecFutureGetProcessingStatus(future.get(), statuses.data(),
+                                      &status_count);
+
+  // copy each decoded image to host and write output tensors.
+  constexpr size_t kImageFloats =
+      3 * static_cast<size_t>(kTargetSize) * kTargetSize;
+
+  for (size_t j = 0; j < valid.size(); ++j) {
+    const int i = valid[j].idx;
+    if (statuses[j] != NVIMGCODEC_PROCESSING_STATUS_SUCCESS) {
+      char msg[64];
+      snprintf(msg, sizeof(msg), "decode failed, nvImageCodec status 0x%x",
+               statuses[j]);
+      (*errors)[i] = msg;
+      continue;
     }
+
+    const int w = valid[j].src_width;
+    const int h = valid[j].src_height;
+    const size_t decoded_size = static_cast<size_t>(w) * h * 3;
 
     std::vector<std::uint8_t> host_buffer(decoded_size);
-    if (cudaMemcpy(host_buffer.data(), device_buffer.get(), decoded_size,
-                   cudaMemcpyDeviceToHost) != cudaSuccess) {
-      return Fail("cudaMemcpy device to host failed");
+    if (cudaMemcpy(host_buffer.data(), valid[j].device_buffer.get(),
+                   decoded_size, cudaMemcpyDeviceToHost) != cudaSuccess) {
+      (*errors)[i] = "cudaMemcpy device to host failed";
+      continue;
     }
 
-    const cv::Mat decoded(height, width, CV_8UC3, host_buffer.data());
-    WriteOutputTensors(decoded, image_output, im_shape_output,
-                       scale_factor_output);
-    return nullptr;
-  } catch (const std::exception &e) {
-    return Fail(std::string("exception: ") + e.what());
+    const cv::Mat decoded(h, w, CV_8UC3, host_buffer.data());
+    WriteOutputTensors(decoded,
+                       image_output + static_cast<size_t>(i) * kImageFloats,
+                       im_shape_output + i * 2, scale_factor_output + i * 2);
   }
 }
